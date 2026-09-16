@@ -1,0 +1,35 @@
+# 安装依赖：
+# pip install -r requirements.txt
+
+# 数据库驱动
+pymysql
+# 数据库 ORM
+sqlalchemy
+# Web 服务器
+uvicorn[standard]
+# API 框架
+fastapi
+# 文件上传（FastAPI 的 UploadFile / File 依赖它）
+python-multipart
+# 加密库
+cryptography
+# 语言链
+openai
+# HTTP 请求（tools/ 里的天气、路线工具要用）
+httpx
+# IANA 时区数据（Windows 上 zoneinfo 找时区要用它，时间工具依赖）
+tzdata
+langchain
+langchain-openai
+langchain-core
+langchain-chroma
+langchain-text-splitters
+langgraph
+langchain-mcp-adapters
+mcp
+# ChromaDB 向量数据库
+chromadb
+# 环境变量加载库
+python-dotenv
+# 会话管理库
+itsdangerous
