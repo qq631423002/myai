@@ -29,6 +29,8 @@ langchain-mcp-adapters
 mcp
 # ChromaDB 向量数据库
 chromadb
+# 本地中文 embedding（RAG 读书功能用）：会把 torch 一起装上，体积较大但纯 CPU 可用
+sentence-transformers
 # 环境变量加载库
 python-dotenv
 # 会话管理库
