@@ -97,19 +97,56 @@ def _load(soup_id: str, db: Session) -> dict | None:
     return None
 
 
+def _saved_ai_soups(db: Session) -> list[dict]:
+    """把玩家「加入题库」的 AI 题转成和内置题库一样的结构。
+
+    转成同一结构，是为了让它们能和内置题一起交给 soups.pick_from() 抽取 ——
+    抽题逻辑不需要知道题目来自代码还是数据库。
+    """
+    rows = (
+        db.query(GeneratedSoup)
+        .filter(GeneratedSoup.saved.is_(True))
+        .order_by(GeneratedSoup.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": f"ai-{r.id}",
+            "title": r.title,
+            "difficulty": r.difficulty or "中等",
+            "tags": [t for t in (r.tags or "").split(",") if t] or ["AI 原创"],
+            "surface": r.surface,
+            "answer": r.answer,
+        }
+        for r in rows
+    ]
+
+
 @router.get("/api/soup/new")
-def new_soup(difficulty: Optional[str] = None, exclude: Optional[str] = None):
-    """从内置题库随机抽一道。**只返回汤面**，汤底留在后端。"""
+def new_soup(
+    difficulty: Optional[str] = None,
+    exclude: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """随机抽一道。**只返回汤面**，汤底留在后端。
+
+    题库 = 内置题库（game/soups.py）+ 玩家「加入题库」的 AI 题。
+
+    为什么 AI 出的题默认不进题库：模型出题质量参差不齐，全塞进抽题池
+    会明显拉低游戏体验。所以默认只是存档，由玩家自己点「加入题库」筛选。
+    """
     exclude_ids = [x.strip() for x in (exclude or "").split(",") if x.strip()]
-    soup = soups.pick(difficulty=difficulty, exclude=exclude_ids)
-    if not soup:
+    pool = list(soups.SOUPS) + _saved_ai_soups(db)
+
+    picked = soups.pick_from(pool, difficulty=difficulty, exclude=exclude_ids)
+    if not picked:
         raise HTTPException(status_code=404, detail="没有可用的题目")
 
     return {
-        "题目": soups.public_view(soup),
-        "可选难度": soups.difficulties(),
-        "题目总数": len(soups.SOUPS),
-        "来源": "内置题库",
+        "题目": soups.public_view(picked),
+        "可选难度": soups.difficulties(pool),
+        "题目总数": len(pool),
+        "来源": "AI 题库（已收藏）" if picked["id"].startswith("ai-") else "内置题库",
     }
 
 
@@ -119,12 +156,21 @@ async def generate_soup(body: GenerateRequest, db: Session = Depends(get_db)):
 
     （出题要写两个故事，比较慢，前端记得显示「AI 正在出题…」。）
     """
-    # 把内置题的标题 + 最近 AI 出过的标题告诉它，尽量避免撞车
+    # 把内置题的标题 + 最近 AI 出过的标题 + 已加入题库的标题都告诉它，尽量避免撞车
     avoid = [s["title"] for s in soups.SOUPS]
     recent = (
         db.query(GeneratedSoup.title).order_by(GeneratedSoup.id.desc()).limit(10).all()
     )
     avoid += [r[0] for r in recent]
+    # 已收藏的题也报给它：否则可能又出一道跟题库里某道几乎一样的（上限 20 条，别把提示词撑爆）
+    saved_titles = (
+        db.query(GeneratedSoup.title)
+        .filter(GeneratedSoup.saved.is_(True))
+        .order_by(GeneratedSoup.id.desc())
+        .limit(20)
+        .all()
+    )
+    avoid += [r[0] for r in saved_titles if r[0] not in avoid]
 
     made = await generator.generate(difficulty=body.difficulty, avoid_titles=avoid)
     if "error" in made:
@@ -162,9 +208,40 @@ async def generate_soup(body: GenerateRequest, db: Session = Depends(get_db)):
             "difficulty": row.difficulty,
             "tags": [t for t in (row.tags or "").split(",") if t],
             "surface": row.surface,
+            "saved": bool(row.saved),   # 新出的题默认 False，玩家点「加入题库」才变 True
         },
         "来源": "AI 现场出题",
     }
+
+
+class SaveRequest(BaseModel):
+    """把 AI 出的题加入题库 / 移出题库。"""
+    id: str
+    saved: bool = True
+
+
+@router.post("/api/soup/save")
+def save_soup(body: SaveRequest, db: Session = Depends(get_db)):
+    """把 AI 现场出的题加入题库（或移出）。
+
+    加入后它会和内置题一样被「换一题」抽到；
+    移出只是不再进入抽题池，题目记录本身仍然保留（数据库里还能查到）。
+    """
+    if not body.id.startswith("ai-"):
+        raise HTTPException(status_code=400, detail="内置题本来就在题库里，不用加入")
+    try:
+        pk = int(body.id[3:])
+    except ValueError:
+        raise HTTPException(status_code=400, detail="题目 id 格式不对")
+
+    row = db.query(GeneratedSoup).filter(GeneratedSoup.id == pk).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="题目不存在或已被清理（只保留最近 200 道）")
+
+    row.saved = body.saved
+    db.commit()
+    db.refresh(row)
+    return {"id": body.id, "saved": bool(row.saved), "title": row.title}
 
 
 @router.get("/api/soup/{soup_id}/answer")

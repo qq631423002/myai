@@ -37,6 +37,11 @@ NEW_COLUMNS = {
     "books": {
         "stored_name": "VARCHAR(255)",
     },
+    "generated_soups": {
+        # 是否已「加入题库」。老库里的历史题目一律按 0（未加入）处理，
+        # 不会凭空进入抽题池 —— 由玩家自己决定哪些题值得留下。
+        "saved": "BOOLEAN NOT NULL DEFAULT 0",
+    },
 }
 
 

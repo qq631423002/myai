@@ -46,6 +46,13 @@ backend/*.db
 backend/uploads/
 # 上传的书原文 + RAG 向量库（本地数据，不入库）
 backend/data/
-# 环境变量（API key 等密钥）
+# 环境变量（API key、数据库密码等密钥，每人本地一份，不入仓库）
 .env
 backend/.env
+
+# Python 缓存（每次运行自动生成，不该进仓库）
+__pycache__/
+*.pyc
+
+# RAG 向量模型文件（几十 MB，各人自己下载）
+backend/vector_models/

@@ -65,6 +65,20 @@
       <p class="reveal-text">{{ revealed }}</p>
     </div>
 
+    <!-- ===== 回合结束：AI 现场出的题可以加入题库 ===== -->
+    <div v-if="solved && isAiPuzzle" class="save-row">
+      <span class="save-hint">
+        {{
+          saved
+            ? '⭐ 这道题已在你的题库里，之后「换一题」有机会再抽到它。'
+            : '💡 这是 AI 现场出的题。觉得不错就加进题库，以后还能抽到。'
+        }}
+      </span>
+      <button class="save-btn" :class="{ on: saved }" :disabled="saving" @click="toggleSave">
+        {{ saving ? '处理中…' : saved ? '✓ 已加入题库（点击移出）' : '⭐ 加入题库' }}
+      </button>
+    </div>
+
     <div v-if="error" class="panel-err">⚠️ {{ error }}</div>
 
     <!-- ===== 问答区 ===== -->
@@ -115,7 +129,7 @@
 
 <script setup lang="ts">
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 interface Soup {
   id: string
@@ -123,6 +137,8 @@ interface Soup {
   difficulty: string
   tags: string[]
   surface: string
+  /** AI 现场出的题：是否已「加入题库」（内置题没有这个字段） */
+  saved?: boolean
 }
 
 type Verdict = 'yes' | 'no' | 'irrelevant' | 'solved' | 'unknown'
@@ -145,8 +161,13 @@ const answer = ref('')
 const revealed = ref('')
 const error = ref('')
 const solved = ref(false)
+const saved = ref(false) // 当前这道 AI 题是否已加入题库
+const saving = ref(false) // 正在提交「加入题库 / 移出题库」
 const scrollRef = ref<HTMLElement | null>(null)
 const askedIds = ref<string[]>([]) // 抽过的题，避免连着重复
+
+/** 只有 AI 现场出的题才需要「加入题库」——内置题本来就在题库里 */
+const isAiPuzzle = computed(() => !!soup.value?.id?.startsWith('ai-'))
 
 const VERDICT_META: Record<Verdict, { label: string; cls: string }> = {
   yes: { label: '是', cls: 'v-yes' },
@@ -177,6 +198,7 @@ async function newPuzzle(difficulty?: string) {
   answer.value = ''
   error.value = ''
   solved.value = false
+  saved.value = false
 
   try {
     const params = new URLSearchParams()
@@ -210,6 +232,7 @@ async function generatePuzzle() {
   turns.value = []
   answer.value = ''
   solved.value = false
+  saved.value = false
 
   try {
     const res = await fetch('/api/soup/generate', {
@@ -223,6 +246,7 @@ async function generatePuzzle() {
     if (!res.ok) throw new Error(json.detail || 'AI 出题失败')
     soup.value = json.题目 as Soup
     source.value = (json.来源 as string) ?? 'AI 现场出题'
+    saved.value = Boolean((json.题目 as Soup).saved)
   } catch (e) {
     error.value = e instanceof Error ? e.message : '网络错误'
   } finally {
@@ -300,6 +324,37 @@ async function giveUp() {
     solved.value = true
   } catch (e) {
     error.value = e instanceof Error ? e.message : '网络错误'
+  }
+}
+
+/**
+ * 把这道 AI 出的题加入题库 / 移出题库。
+ *
+ * 为什么要玩家手动点：AI 出的题默认只是存进数据库存档，**不进抽题池** ——
+ * 模型出题质量参差不齐，全放进去会拉低游戏体验。加过之后，
+ * 它就和内置题一样会被「换一题」抽到。
+ */
+async function toggleSave() {
+  if (!soup.value || !isAiPuzzle.value || saving.value) return
+
+  saving.value = true
+  error.value = ''
+  const next = !saved.value
+  try {
+    const res = await fetch('/api/soup/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: soup.value.id, saved: next }),
+    })
+    const text = await res.text()
+    if (!text) throw new Error(`请求失败（HTTP ${res.status}），后端可能没启动`)
+    const json = JSON.parse(text)
+    if (!res.ok) throw new Error(json.detail || '操作失败')
+    saved.value = Boolean(json.saved)
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '网络错误'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -536,6 +591,61 @@ onMounted(() => newPuzzle())
   font-size: 14.5px;
   line-height: 1.8;
   color: #4a3f22;
+}
+
+/* ===== 回合结束：把 AI 出的题加入题库 ===== */
+.save-row {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: #fffdf3;
+  border: 1px solid #f0dca6;
+  box-shadow: 0 6px 20px rgba(200, 160, 60, 0.12);
+}
+
+.save-hint {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6b5a2e;
+}
+
+.save-btn {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: #6b4f8f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.18s,
+    color 0.18s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #5a4179;
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 已加入：改成描边样式，暗示「再点一下是移出」 */
+.save-btn.on {
+  background: #fff;
+  color: #6b4f8f;
+  border-color: #cbb8dd;
+}
+
+.save-btn.on:hover:not(:disabled) {
+  background: #f7f3fb;
 }
 
 .panel-err {

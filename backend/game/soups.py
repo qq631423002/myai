@@ -135,16 +135,30 @@ SOUPS = [
 ]
 
 
-def pick(difficulty: str | None = None, exclude: list[str] | None = None) -> dict | None:
-    """随机取一道题。exclude 用来避免连着抽到同一道（“换一题”）。"""
-    pool = [s for s in SOUPS if not difficulty or s["difficulty"] == difficulty]
-    if not pool:
-        pool = list(SOUPS)
+def pick_from(
+    pool: list[dict],
+    difficulty: str | None = None,
+    exclude: list[str] | None = None,
+) -> dict | None:
+    """从给定题库里随机取一道。
+
+    为什么单独抽出来：题库现在有两个来源 —— 内置的 SOUPS，以及玩家
+    「加入题库」的 AI 题（存在数据库里）。两者必须共用同一套筛选规则，
+    否则「换一题」的行为会随题目来源变化，玩家能明显感觉到不一致。
+    """
+    candidates = [s for s in pool if not difficulty or s["difficulty"] == difficulty]
+    if not candidates:
+        candidates = list(pool)  # 该难度一道都没有 → 放宽成全部
     if exclude:
-        filtered = [s for s in pool if s["id"] not in exclude]
+        filtered = [s for s in candidates if s["id"] not in exclude]
         if filtered:
-            pool = filtered
-    return random.choice(pool) if pool else None
+            candidates = filtered
+    return random.choice(candidates) if candidates else None
+
+
+def pick(difficulty: str | None = None, exclude: list[str] | None = None) -> dict | None:
+    """只从内置题库里抽（保留原行为，方便单独调用）。"""
+    return pick_from(SOUPS, difficulty=difficulty, exclude=exclude)
 
 
 def get(soup_id: str) -> dict | None:
@@ -162,9 +176,10 @@ def public_view(soup: dict) -> dict:
     }
 
 
-def difficulties() -> list[str]:
+def difficulties(pool: list[dict] | None = None) -> list[str]:
+    """可选难度列表。传 pool 时按合并后的题库统计（内置题 + 收藏的 AI 题）。"""
     seen: list[str] = []
-    for s in SOUPS:
+    for s in (SOUPS if pool is None else pool):
         if s["difficulty"] not in seen:
             seen.append(s["difficulty"])
     return seen
