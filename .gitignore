@@ -44,15 +44,8 @@ __screenshots__/
 backend/*.db
 # 用户上传的头像等文件（本地数据，不入库）
 backend/uploads/
-# 环境变量（API key、数据库密码等密钥，每人本地一份，不入仓库）
+# 上传的书原文 + RAG 向量库（本地数据，不入库）
+backend/data/
+# 环境变量（API key 等密钥）
 .env
 backend/.env
-
-# Python 缓存（每次运行自动生成，不该进仓库）
-__pycache__/
-*.pyc
-
-# RAG 向量库（本地生成，几百 MB）
-backend/vector_store/
-# RAG 向量模型文件（几十 MB，各人自己下载）
-backend/vector_models/

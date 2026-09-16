@@ -34,6 +34,9 @@ NEW_COLUMNS = {
         "display_name": "VARCHAR(64)",
         "avatar": "VARCHAR(255)",
     },
+    "books": {
+        "stored_name": "VARCHAR(255)",
+    },
 }
 
 

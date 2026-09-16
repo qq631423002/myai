@@ -31,12 +31,13 @@ app.add_middleware(
 )
 
 # 注册支路由
-from routers import demo, auth, chat, features, soup  # noqa: E402
+from routers import demo, auth, chat, features, soup, book  # noqa: E402
 app.include_router(demo.router)
 app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(features.router)  # 天气页 / 路线页用的普通接口
 app.include_router(soup.router)      # 海龟汤游戏
+app.include_router(book.router)      # AI 读书陪读（RAG：上传书 + 带页码引用的问答）
 # 注：语音输入已改为前端用浏览器 Web Speech API 实现，后端不再需要 ASR 接口
 
 # 建表（数据库不可用时打印警告并跳过，不影响 demo 接口）
@@ -46,6 +47,12 @@ try:
     print("[init] 数据库表已就绪")
 except Exception as e:  # noqa: BLE001
     print(f"[warn] 数据库初始化失败（demo 接口不受影响）：{e}")
+
+# 处理上次没建完的书籍索引（否则前端会一直停在「建索引中」）
+try:
+    book.recover_stuck_books()
+except Exception as e:  # noqa: BLE001
+    print(f"[warn] 检查未完成索引时出错（不影响其他功能）：{e}")
 
 # 头像等上传文件的静态目录，先建出来再挂载（StaticFiles 要求目录已存在）
 AVATAR_DIR.mkdir(parents=True, exist_ok=True)

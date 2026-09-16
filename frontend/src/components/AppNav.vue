@@ -70,6 +70,7 @@ const items: NavItem[] = [
   { path: '/weather', label: '天气', icon: '🌤️', desc: '各城市实时天气与未来预报' },
   { path: '/route', label: '路线', icon: '🧭', desc: '两地距离、耗时与地图路线' },
   { path: '/soup', label: '海龟汤', icon: '🐢', desc: 'AI 出题当主持，你问是非题猜真相' },
+  { path: '/book', label: '读书陪读', icon: '📚', desc: '上传一本txt，按章节问答并标注页码' },
 ]
 
 const route = useRoute()
